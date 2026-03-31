@@ -1,0 +1,223 @@
+{
+  "name": "AI Add Task Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "add-task",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1504,
+        752
+      ],
+      "id": "5f8bdbbc-9345-4442-8ded-8d59448d4931",
+      "name": "Webhook1",
+      "webhookId": "5442b43b-99b7-46a1-9ff3-8b4c7af0e815"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json.body.message}}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are a task parsing assistant.  Your job is to convert one natural language task sentence into structured JSON for a Feishu Bitable tasks table.  User input: {{$json.body.message}}  The target table fields are:  task_id task_name deadline estimated_minutes priority task_type earliest_start splittable energy_required status remaining_minutes created_at updated_at notes  You must return ONE clean JSON object only.  Field rules:  1. task_id - Always return an empty string: \"\"  2. task_name - Extract a short, clear Chinese task name - Example: \"统计学作业\", \"复习英语\", \"和老师开会\"  3. deadline - Extract the deadline from the sentence as clearly as possible - If missing, return \"\" - Keep it short and readable in Chinese - Example: \"明天 20:00\", \"今晚 23:00\", \"周五 18:00\"  4. estimated_minutes - Convert the estimated duration into minutes - If user says 2小时, return 120 - If user says 30分钟, return 30 - If missing, return 60  5. priority - Return only one of:   \"High\", \"Medium\", \"Low\" - Use this rule:   - urgent / near deadline / important homework / exam prep -> \"High\"   - normal planned task -> \"Medium\"   - casual / flexible / non-urgent -> \"Low\"  6. task_type - Return only one of:   \"Study\", \"Work\", \"Life\", \"Other\" - Use this rule:   - homework / revision / exam / reading / class task -> \"Study\"   - project / meeting / internship / business -> \"Work\"   - shopping / exercise / eating / personal affairs / rest -> \"Life\"   - anything else -> \"Other\"  7. earliest_start - Extract the earliest allowed start time if mentioned - Examples:   - \"明天下午再做\" -> \"明天 12:00\"   - \"晚上开始\" -> \"今天 18:00\" - If not mentioned, return \"\"  8. splittable - Return only one of:   true   false - If the task sounds like it can be broken into parts, return true - If the task sounds like it should be done in one block, return false - Examples:   - 写作业 / 复习 / 阅读 / 做PPT -> true   - 开会 / 面试 / 上课 / 提交材料 -> false  9. energy_required - Return only one of:   \"High\", \"Medium\", \"Low\" - Use this rule:   - deep focus / hard thinking / writing / studying -> \"High\"   - moderate effort / normal office task -> \"Medium\"   - light / routine / easy personal task -> \"Low\"  10. status - Always return \"Inbox\"  11. remaining_minutes - Always return the same value as estimated_minutes  12. created_at - Always return \"\"  13. updated_at - Always return \"\"  14. notes - Save the original user sentence exactly - Example: \"明天晚上8点前完成统计学作业，大约2小时\"  Important output rules: - Return JSON only - Do not explain - Do not add markdown - Do not use ```json - Do not output anything before or after the JSON  Example output: {   \"task_id\": \"\",   \"task_name\": \"统计学作业\",   \"deadline\": \"明天 20:00\",   \"estimated_minutes\": 120,   \"priority\": \"High\",   \"task_type\": \"Study\",   \"earliest_start\": \"\",   \"splittable\": true,   \"energy_required\": \"High\",   \"status\": \"Inbox\",   \"remaining_minutes\": 120,   \"created_at\": \"\",   \"updated_at\": \"\",   \"notes\": \"明天晚上8点前完成统计学作业，大约2小时\" }"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -1152,
+        768
+      ],
+      "id": "85b80d92-1513-4f7b-9b36-ef30f88fb4d1",
+      "name": "AI Task Parser1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// 取 AI Parser 输出\nconst parsed = item.output || {};\n\n// 生成任务 ID\nconst taskId = \"TASK-\" + Date.now();\n\n// 直接把字段摊平到顶层\nreturn [\n  {\n    json: {\n      task_id: taskId,\n      task_name: parsed.task_name || \"\",\n      deadline: parsed.deadline || \"\",\n      estimated_minutes: parsed.estimated_minutes || 60,\n      priority: parsed.priority || \"Medium\",\n      task_type: parsed.task_type || \"Study\",\n\n      earliest_start: \"\",\n      splittable: \"No\",\n      energy_required: \"Medium\",\n      status: \"Inbox\",\n      remaining_minutes: parsed.estimated_minutes || 60,\n\n      created_at: new Date().toISOString(),\n      updated_at: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        912
+      ],
+      "id": "5453354c-3c6d-4fe8-b442-9e40a5137a8a",
+      "name": "Generate Task ID1"
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:parseUrl",
+        "url": "https://wcndzrbt9rti.feishu.cn/base/Ho4CbE1snav4p1s5nXJcpVnsn4h?table=tbl0XR1LFTR6EtY8&view=vew3CxlCVM"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        720
+      ],
+      "id": "519ff185-f1a3-444f-908b-e1786aacf17d",
+      "name": "Parse Bitable URL1",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:add",
+        "app_toke": "={{$json.app_token}}",
+        "table_id": "={{$json.table_id}}",
+        "user_id_type": "user_id",
+        "body": "={{\nJSON.stringify((() => {\n  const data = $node[\"Generate Task ID1\"].json;\n\n  const normalizedTaskType =\n    data.task_type === \"Study\" ? \"Study\" :\n    data.task_type === \"Work\" ? \"Work\" :\n    \"Life\";\n\n  const normalizedPriority =\n    data.priority === \"High\" ? \"High\" :\n    data.priority === \"Medium\" ? \"Medium\" :\n    \"Low\";\n\n  const normalizedEnergy =\n    data.energy_required === \"High\" ? \"High\" :\n    data.energy_required === \"Medium\" ? \"Medium\" :\n    \"Low\";\n\n  const normalizedStatus =\n    data.status === \"Scheduled\" ? \"Scheduled\" :\n    data.status === \"InProgress\" ? \"InProgress\" :\n    data.status === \"Done\" ? \"Done\" :\n    data.status === \"Cancelled\" ? \"Cancelled\" :\n    \"Inbox\";\n\n  const nowTimestamp = Date.now();\n\n  const createdAt =\n    (typeof data.created_at === \"number\" && !Number.isNaN(data.created_at))\n      ? data.created_at\n      : nowTimestamp;\n\n  const updatedAt =\n    (typeof data.updated_at === \"number\" && !Number.isNaN(data.updated_at))\n      ? data.updated_at\n      : nowTimestamp;\n\n  function toUnixTimestamp(value, endOfDay = false) {\n    if (value === undefined || value === null || String(value).trim() === \"\") {\n      return undefined;\n    }\n\n    if (typeof value === \"number\" && !Number.isNaN(value)) {\n      return value;\n    }\n\n    const str = String(value).trim();\n    const now = new Date();\n    const currentYear = now.getFullYear();\n\n    // 匹配 3月30日 / 3月30号\n    const mdMatch = str.match(/^(\\d{1,2})月(\\d{1,2})(日|号)?$/);\n    if (mdMatch) {\n      const month = Number(mdMatch[1]);\n      const day = Number(mdMatch[2]);\n      const d = new Date(currentYear, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, 0);\n      return d.getTime();\n    }\n\n    // 匹配 YYYY-MM-DD\n    const ymdMatch = str.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);\n    if (ymdMatch) {\n      const year = Number(ymdMatch[1]);\n      const month = Number(ymdMatch[2]);\n      const day = Number(ymdMatch[3]);\n      const d = new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, 0);\n      return d.getTime();\n    }\n\n    // 匹配 YYYY-MM-DD HH:mm\n    const ymdhmMatch = str.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(\\d{1,2}):(\\d{1,2})$/);\n    if (ymdhmMatch) {\n      const year = Number(ymdhmMatch[1]);\n      const month = Number(ymdhmMatch[2]);\n      const day = Number(ymdhmMatch[3]);\n      const hour = Number(ymdhmMatch[4]);\n      const minute = Number(ymdhmMatch[5]);\n      const d = new Date(year, month - 1, day, hour, minute, 0);\n      return d.getTime();\n    }\n\n    // 兜底：让 JS 试解析\n    const parsed = new Date(str);\n    if (!Number.isNaN(parsed.getTime())) {\n      return parsed.getTime();\n    }\n\n    return undefined;\n  }\n\n  const deadlineTs = toUnixTimestamp(data.deadline, true);\n  const earliestStartTs = toUnixTimestamp(data.earliest_start, false);\n\n  const fields = {\n    task_id: data.task_id || \"\",\n    task_name: data.task_name || \"\",\n    estimated_minutes: Number(data.estimated_minutes ?? 60),\n    remaining_minutes: Number(data.remaining_minutes ?? data.estimated_minutes ?? 60),\n\n    priority: normalizedPriority,\n    task_type: normalizedTaskType,\n    splittable: data.splittable === \"Yes\" || data.splittable === true ? \"Yes\" : \"No\",\n    energy_required: normalizedEnergy,\n    status: normalizedStatus,\n\n    notes: data.notes || \"\",\n\n    created_at: createdAt,\n    updated_at: updatedAt\n  };\n\n  if (deadlineTs !== undefined) {\n    fields.deadline = deadlineTs;\n  }\n\n  if (earliestStartTs !== undefined) {\n    fields.earliest_start = earliestStartTs;\n  }\n\n  return { fields };\n})())\n}}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        896
+      ],
+      "id": "ac14f99c-d529-4f1c-b35d-8bd19ac039d6",
+      "name": "Add Task Record1",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -1184,
+        1040
+      ],
+      "id": "bba571b2-bff7-4a63-87d0-9159491a364b",
+      "name": "DeepSeek Chat Model1",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "bAxlrBzQWhUDyWy1",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"task_name\": {\n      \"type\": \"string\"\n    },\n    \"deadline\": {\n      \"type\": \"string\"\n    },\n    \"estimated_minutes\": {\n      \"type\": \"number\"\n    },\n    \"priority\": {\n      \"type\": \"string\"\n    },\n    \"task_type\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"task_name\",\n    \"deadline\",\n    \"estimated_minutes\",\n    \"priority\",\n    \"task_type\"\n  ]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -1008,
+        976
+      ],
+      "id": "7fcd9e71-3e9f-4dfa-92af-36de6fdfd569",
+      "name": "Structured Output Parser1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "AI Task Parser1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Task Parser1": {
+      "main": [
+        [
+          {
+            "node": "Generate Task ID1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Task ID1": {
+      "main": [
+        [
+          {
+            "node": "Parse Bitable URL1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Bitable URL1": {
+      "main": [
+        [
+          {
+            "node": "Add Task Record1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Task Record1": {
+      "main": [
+        []
+      ]
+    },
+    "DeepSeek Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Task Parser1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Task Parser1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a2a46bfb-355c-4d94-98c2-1546bda9e0b9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1be3aca92a433d449d48944996962aede040b8fc675a7216b5db33880489604"
+  },
+  "id": "X4jr3fMHzwtr9sM6",
+  "tags": []
+}

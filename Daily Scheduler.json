@@ -1,0 +1,474 @@
+{
+  "name": "Daily Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        416,
+        -192
+      ],
+      "id": "6ddaf459-6d78-4e01-be4b-c522a66dc3e9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:search",
+        "app_toke": "=Ho4CbE1snav4p1s5nXJcpVnsn4h",
+        "table_id": "=tbl0XR1LFTR6EtY8",
+        "user_id_type": "user_id",
+        "page_size": 50,
+        "body": "{}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        784,
+        -192
+      ],
+      "id": "ab7b73db-0c2e-47f6-b6ee-61ad47337523",
+      "name": "Get Tasks Records",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:search",
+        "app_toke": "CRKzbr4Y4aKnbssXQeacCScanLd",
+        "table_id": "tblscpFpeIC0Go3d",
+        "user_id_type": "user_id",
+        "page_size": 50,
+        "body": "{}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        960,
+        240
+      ],
+      "id": "9050a0b0-399a-442c-82d1-5bcba6eee9b5",
+      "name": "Get Availability Rules",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItem = $input.first().json;\nconst records = inputItem.data?.items || [];\n\nfunction getText(field) {\n  if (!field) return \"\";\n  if (Array.isArray(field)) {\n    if (typeof field[0] === \"object\" && field[0] !== null) {\n      return field[0]?.text || field[0]?.name || \"\";\n    }\n    return field[0] || \"\";\n  }\n  if (typeof field === \"object\") {\n    return field.text || field.name || \"\";\n  }\n  return field;\n}\n\nfunction getNumber(field) {\n  if (field === undefined || field === null || field === \"\") return 0;\n  const num = Number(field);\n  return Number.isNaN(num) ? 0 : num;\n}\n\nfunction getTimestamp(field) {\n  if (field === undefined || field === null || field === \"\") return \"\";\n\n  // 已经是数字时间戳\n  if (typeof field === \"number\" && !Number.isNaN(field)) {\n    return field;\n  }\n\n  // 可能是字符串数字\n  if (typeof field === \"string\") {\n    const trimmed = field.trim();\n    if (!trimmed) return \"\";\n    const num = Number(trimmed);\n    if (!Number.isNaN(num)) return num;\n\n    // 兜底：尝试解析日期字符串\n    const parsed = new Date(trimmed).getTime();\n    return Number.isNaN(parsed) ? \"\" : parsed;\n  }\n\n  // 可能是数组\n  if (Array.isArray(field)) {\n    if (field.length === 0) return \"\";\n    return getTimestamp(field[0]);\n  }\n\n  // 可能是对象\n  if (typeof field === \"object\") {\n    if (field.timestamp !== undefined) {\n      const num = Number(field.timestamp);\n      return Number.isNaN(num) ? \"\" : num;\n    }\n    if (field.value !== undefined) {\n      return getTimestamp(field.value);\n    }\n    if (field.text !== undefined) {\n      return getTimestamp(field.text);\n    }\n  }\n\n  return \"\";\n}\n\nfunction formatTimestamp(ts) {\n  if (ts === \"\" || ts === undefined || ts === null) return \"\";\n  const num = Number(ts);\n  if (Number.isNaN(num)) return \"\";\n\n  const d = new Date(num);\n  const year = d.getFullYear();\n  const month = String(d.getMonth() + 1).padStart(2, \"0\");\n  const day = String(d.getDate()).padStart(2, \"0\");\n  const hour = String(d.getHours()).padStart(2, \"0\");\n  const minute = String(d.getMinutes()).padStart(2, \"0\");\n\n  return `${year}-${month}-${day} ${hour}:${minute}`;\n}\n\nfunction priorityScore(priority) {\n  if (priority === \"High\") return 3;\n  if (priority === \"Medium\") return 2;\n  return 1;\n}\n\nconst now = Date.now();\n\nconst result = records\n  .map(record => {\n    const fields = record.fields || {};\n\n    const taskName = getText(fields.task_name);\n    const taskId = getText(fields.task_id);\n\n    const status = Array.isArray(fields.status)\n      ? fields.status[0]\n      : fields.status;\n\n    const deadlineTs = getTimestamp(fields.deadline);\n    const earliestStartTs = getTimestamp(fields.earliest_start);\n\n    const estimatedMinutes = getNumber(fields.estimated_minutes);\n    const remainingMinutes =\n      getNumber(fields.remaining_minutes) || estimatedMinutes || 0;\n\n    const priority = fields.priority || \"Medium\";\n\n    return {\n      record_id: record.record_id,\n      task_id: taskId,\n      task_name: taskName,\n\n      deadline: deadlineTs,\n      deadline_readable: formatTimestamp(deadlineTs),\n\n      estimated_minutes: estimatedMinutes,\n      priority: priority,\n      priority_score: priorityScore(priority),\n\n      task_type: fields.task_type || \"Life\",\n\n      earliest_start: earliestStartTs,\n      earliest_start_readable: formatTimestamp(earliestStartTs),\n\n      splittable: fields.splittable || \"No\",\n      energy_required: fields.energy_required || \"Medium\",\n      status: status || \"Inbox\",\n      remaining_minutes: remainingMinutes,\n\n      is_overdue:\n        deadlineTs !== \"\" && !Number.isNaN(Number(deadlineTs))\n          ? Number(deadlineTs) < now\n          : false\n    };\n  })\n  .filter(task => {\n    // 只保留 Inbox 和 Need Reschedule\n    const statusOk =\n      task.status === \"Inbox\" ||\n      task.status === \"Need Reschedule\";\n\n    // 还需要有剩余时长\n    const remainingOk = Number(task.remaining_minutes) > 0;\n\n    // earliest_start 到了才能排；没填 earliest_start 也允许\n    const earliestStartOk =\n      !task.earliest_start ||\n      Number(task.earliest_start) <= now;\n\n    // 已过期任务先不丢掉，仍允许进入后续排程\n    // 因为有些场景你可能仍然希望排“已经快来不及”的任务\n    return statusOk && remainingOk && earliestStartOk;\n  })\n  .sort((a, b) => {\n    const aDeadline = a.deadline === \"\" ? Number.MAX_SAFE_INTEGER : Number(a.deadline);\n    const bDeadline = b.deadline === \"\" ? Number.MAX_SAFE_INTEGER : Number(b.deadline);\n\n    // 1. deadline 近的优先\n    if (aDeadline !== bDeadline) {\n      return aDeadline - bDeadline;\n    }\n\n    // 2. priority 高的优先\n    if (a.priority_score !== b.priority_score) {\n      return b.priority_score - a.priority_score;\n    }\n\n    // 3. remaining_minutes 少的优先\n    return Number(a.remaining_minutes) - Number(b.remaining_minutes);\n  });\n\nreturn result.map(t => ({ json: t }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        32
+      ],
+      "id": "bec1423c-5a4e-4b0c-a363-fb6cb2b369cd",
+      "name": "Filter Schedulable Tasks"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1328,
+        -144
+      ],
+      "id": "3d84fe80-52d1-4a1e-a53c-66ca88f8ce8b",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=下面是今天的排程输入数据，请严格根据这个 JSON 生成今天的日程安排，只返回纯 JSON 数组，不要解释：\n\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "你是一个严格的日程排程助手。\n\n你的任务是根据输入的 tasks 和 availability_rules，\n为今天生成一份可执行的学习 / 工作日程草稿。\n\n--------------------------------\n核心规则：\n\n1. 只安排今天。\n2. 只能使用 availability_rules 里的时间段。\n3. 只要存在可安排任务，并且存在可用时间段，就必须输出至少 1 条安排。\n4. 只有在 tasks 为空，或者 availability_rules 为空，或者所有任务都确实无法放入任何时间段时，才返回 []。\n5. Inbox 是可安排任务。\n6. Need Reschedule 的优先级高于 Inbox。\n7. Done 不安排。\n\n--------------------------------\n任务优先级排序规则：\n\n1. status 优先级：\nNeed Reschedule > Inbox\n\n2. deadline 更近的优先\n\n3. priority 优先级：\nHigh > Medium > Low\n\n4. remaining_minutes 更少的优先\n\n--------------------------------\n必须遵守：\n\n1. 每个任务安排的总时长不能超过 remaining_minutes。\n2. 如果任务 remaining_minutes 大于某个时间段长度：\n   - splittable = \"Yes\" 才可以拆分\n   - splittable = \"No\" 必须放入单个足够长的完整时间段\n3. energy_required 匹配 energy_level：\n   - High → 优先 High\n   - Medium → Medium / High\n   - Low → 任意\n4. 不能让两个任务时间冲突。\n5. 每个时间段必须按顺序填充。\n6. 不允许编造时间段。\n7. start_time 和 end_time 必须来自可用时间段切分后的真实时间。\n\n--------------------------------\n重要补充：\n\n- 如果一个不可拆分任务可以完整放进某个可用时间段，就应该优先安排它。\n- 如果一个可拆分任务可以分配到多个时间段，就可以拆分安排。\n- 不要偷懒返回 []。\n- 只要有可排内容，就输出真实排程。\n\n--------------------------------\n输入数据格式：\n{\n  \"today_weekday\": \"...\",\n  \"tasks\": [...],\n  \"availability_rules\": [...]\n}\n\n--------------------------------\n输出必须是纯 JSON 数组，不要解释，不要 markdown，不要代码块。\n\n输出格式：\n[\n  {\n    \"task_id\": \"TASK-xxx\",\n    \"task_name\": \"任务名\",\n    \"start_time\": \"14:00\",\n    \"end_time\": \"15:30\",\n    \"scheduled_minutes\": 90\n  }\n]\n\n如果今天真的没有任何可安排内容，返回：\n[]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1392,
+        160
+      ],
+      "id": "ddee1fdf-10c0-4239-8812-856e7c996a1a",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        416
+      ],
+      "id": "a133aec4-8356-46c1-91dc-d4a7fba0d3f3",
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "bAxlrBzQWhUDyWy1",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\n\nconst today = new Date();\nconst nowTs = Date.now();\n\n// JS: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday...\nconst weekdayMap = {\n  0: [\"Sunday\", \"星期日\", \"周日\", \"周天\"],\n  1: [\"Monday\", \"星期一\", \"周一\"],\n  2: [\"Tuesday\", \"星期二\", \"周二\"],\n  3: [\"Wednesday\", \"星期三\", \"周三\"],\n  4: [\"Thursday\", \"星期四\", \"周四\"],\n  5: [\"Friday\", \"星期五\", \"周五\"],\n  6: [\"Saturday\", \"星期六\", \"周六\"]\n};\n\nconst todayIndex = today.getDay();\nconst todayWeekdayNames = weekdayMap[todayIndex];\nconst today_weekday = todayWeekdayNames[0];\n\nfunction getText(field) {\n  if (!field) return \"\";\n  if (Array.isArray(field)) {\n    if (typeof field[0] === \"object\" && field[0] !== null) {\n      return field[0]?.text || field[0]?.name || \"\";\n    }\n    return field[0] || \"\";\n  }\n  if (typeof field === \"object\") {\n    return field.text || field.name || \"\";\n  }\n  return field;\n}\n\nfunction getNumber(value, defaultValue = 0) {\n  if (value === undefined || value === null || value === \"\") return defaultValue;\n  const num = Number(value);\n  return Number.isNaN(num) ? defaultValue : num;\n}\n\nfunction getTimestamp(value) {\n  if (value === undefined || value === null || value === \"\") return \"\";\n\n  if (typeof value === \"number\" && !Number.isNaN(value)) {\n    return value;\n  }\n\n  if (typeof value === \"string\") {\n    const trimmed = value.trim();\n    if (!trimmed) return \"\";\n    const num = Number(trimmed);\n    if (!Number.isNaN(num)) return num;\n\n    const parsed = new Date(trimmed).getTime();\n    return Number.isNaN(parsed) ? \"\" : parsed;\n  }\n\n  if (Array.isArray(value)) {\n    if (value.length === 0) return \"\";\n    return getTimestamp(value[0]);\n  }\n\n  if (typeof value === \"object\") {\n    if (value.timestamp !== undefined) {\n      const num = Number(value.timestamp);\n      return Number.isNaN(num) ? \"\" : num;\n    }\n    if (value.value !== undefined) {\n      return getTimestamp(value.value);\n    }\n    if (value.text !== undefined) {\n      return getTimestamp(value.text);\n    }\n  }\n\n  return \"\";\n}\n\nfunction formatTimestamp(ts) {\n  if (ts === \"\" || ts === undefined || ts === null) return \"\";\n  const num = Number(ts);\n  if (Number.isNaN(num)) return \"\";\n\n  const d = new Date(num);\n  const year = d.getFullYear();\n  const month = String(d.getMonth() + 1).padStart(2, \"0\");\n  const day = String(d.getDate()).padStart(2, \"0\");\n  const hour = String(d.getHours()).padStart(2, \"0\");\n  const minute = String(d.getMinutes()).padStart(2, \"0\");\n\n  return `${year}-${month}-${day} ${hour}:${minute}`;\n}\n\nfunction priorityScore(priority) {\n  if (priority === \"High\") return 3;\n  if (priority === \"Medium\") return 2;\n  return 1;\n}\n\n// 1. 提取任务\nconst rawTasks = items.filter(i => i.record_id);\n\n// 2. 过滤有效任务 + 标准化\nconst tasks = rawTasks\n  .filter(t =>\n    t.task_id &&\n    t.task_id !== \"empty\" &&\n    t.task_name &&\n    t.task_name !== \"empty\" &&\n    Number(t.remaining_minutes || t.estimated_minutes || 0) > 0 &&\n    t.status !== \"Done\" &&\n    t.status !== \"Cancelled\"\n  )\n  .map(t => {\n    const deadlineTs = getTimestamp(t.deadline);\n    const earliestStartTs = getTimestamp(t.earliest_start);\n    const remainingMinutes = getNumber(\n      t.remaining_minutes,\n      getNumber(t.estimated_minutes, 0)\n    );\n    const estimatedMinutes = getNumber(t.estimated_minutes, 0);\n    const priority = t.priority || \"Medium\";\n\n    return {\n      record_id: t.record_id,\n      task_id: t.task_id,\n      task_name: t.task_name,\n\n      deadline: deadlineTs,\n      deadline_readable: formatTimestamp(deadlineTs),\n\n      estimated_minutes: estimatedMinutes,\n      remaining_minutes: remainingMinutes,\n\n      priority,\n      priority_score: priorityScore(priority),\n\n      task_type: t.task_type || \"Life\",\n\n      earliest_start: earliestStartTs,\n      earliest_start_readable: formatTimestamp(earliestStartTs),\n\n      splittable: t.splittable || \"No\",\n      energy_required: t.energy_required || \"Medium\",\n      status: t.status || \"Inbox\",\n\n      is_overdue:\n        deadlineTs !== \"\" && !Number.isNaN(Number(deadlineTs))\n          ? Number(deadlineTs) < nowTs\n          : false\n    };\n  })\n  .filter(t => {\n    // earliest_start 到了才能进入今天排程；没填 earliest_start 也允许\n    return !t.earliest_start || Number(t.earliest_start) <= nowTs;\n  });\n\n// 3. 去重（同 task_id 后出现的覆盖前面的）\nconst uniqueTasksMap = {};\nfor (const task of tasks) {\n  uniqueTasksMap[task.task_id] = task;\n}\nconst uniqueTasks = Object.values(uniqueTasksMap);\n\n// 4. 排序：deadline近 > priority高 > 剩余时长短\nuniqueTasks.sort((a, b) => {\n  const aDeadline = a.deadline === \"\" ? Number.MAX_SAFE_INTEGER : Number(a.deadline);\n  const bDeadline = b.deadline === \"\" ? Number.MAX_SAFE_INTEGER : Number(b.deadline);\n\n  if (aDeadline !== bDeadline) {\n    return aDeadline - bDeadline;\n  }\n\n  if (a.priority_score !== b.priority_score) {\n    return b.priority_score - a.priority_score;\n  }\n\n  return Number(a.remaining_minutes) - Number(b.remaining_minutes);\n});\n\n// 5. 提取 availability rules\nconst rawRules = items.filter(i =>\n  i.weekday !== undefined ||\n  i.start_time !== undefined ||\n  i.end_time !== undefined\n);\n\n// 6. 标准化 availability rules\nconst normalizedRules = rawRules\n  .filter(rule => {\n    const start = getText(rule.start_time);\n    const end = getText(rule.end_time);\n    return start && end;\n  })\n  .map(rule => ({\n    weekday: String(getText(rule.weekday)).trim(),\n    start_time: getText(rule.start_time),\n    end_time: getText(rule.end_time),\n    energy_level: getText(rule.energy_level),\n    location: getText(rule.location),\n    device: getText(rule.device)\n  }));\n\n// 7. 只保留今天的规则\nconst availability_rules = normalizedRules.filter(rule =>\n  todayWeekdayNames.includes(rule.weekday)\n);\n\nreturn [\n  {\n    json: {\n      today_date: today.toISOString().slice(0, 10),\n      current_timestamp: nowTs,\n      today_weekday,\n      today_weekday_aliases: todayWeekdayNames,\n      tasks: uniqueTasks,\n      availability_rules\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -144
+      ],
+      "id": "95ca3eba-adcd-48cc-a957-f64522db9251",
+      "name": "Build Schedule Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.first().json.data.items;\n\nreturn items.map(item => {\n  return {\n    json: {\n      record_id: item.record_id,\n      ...item.fields\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        240
+      ],
+      "id": "121dd14c-34aa-4a17-8ae2-921927138436",
+      "name": "Split Availability Rules"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiRaw = $input.first().json.output;\nconst originalTasks = $items(\"Filter Schedulable Tasks\").map(i => i.json);\n\n// 1. 先把 AI 输出转成真正的数组\nlet schedules = [];\n\nif (Array.isArray(aiRaw)) {\n  schedules = aiRaw;\n} else if (typeof aiRaw === \"string\") {\n  try {\n    schedules = JSON.parse(aiRaw);\n  } catch (e) {\n    return [\n      {\n        json: {\n          error: \"AI output is not valid JSON\",\n          raw_output: aiRaw\n        }\n      }\n    ];\n  }\n} else {\n  return [\n    {\n      json: {\n        error: \"AI output format is unsupported\",\n        raw_output: aiRaw\n      }\n    }\n  ];\n}\n\n// 2. 如果没有排程结果\nif (!Array.isArray(schedules) || schedules.length === 0) {\n  return [];\n}\n\n// 3. 展开成 n8n 多条 item\nreturn schedules.map(schedule => {\n  const matchedTask = originalTasks.find(\n    t => t.task_id === schedule.task_id\n  ) || {};\n\n  return {\n    json: {\n      // 用于更新 tasks 表\n      record_id: matchedTask.record_id || schedule.record_id || \"\",\n\n      // 任务信息\n      task_id: schedule.task_id || \"\",\n      task_name: schedule.task_name || \"\",\n\n      // 排程信息\n      start_time: schedule.start_time || \"\",\n      end_time: schedule.end_time || \"\",\n      scheduled_minutes: Number(schedule.scheduled_minutes || 0),\n\n      // schedule_output 表字段\n      schedule_id: \"SCH-\" + Date.now() + \"-\" + Math.floor(Math.random() * 1000),\n      schedule_status: \"Planned\",\n      generated_at: new Date().toISOString(),\n\n      // 给 Update Task Status 用\n      new_task_status: \"Scheduled\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        80
+      ],
+      "id": "13adc899-a42d-4346-b987-54c86f6e6cfd",
+      "name": "Expand Draft Schedule"
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:update",
+        "app_toke": "Ho4CbE1snav4p1s5nXJcpVnsn4h",
+        "table_id": "tbl0XR1LFTR6EtY8",
+        "record_id": "={{$json.record_id}}",
+        "body": "={\n  \"fields\": {\n    \"status\": \"Done\"\n  }\n}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        1984,
+        -128
+      ],
+      "id": "7eb557f1-c646-4cb6-8688-9f80be01ec92",
+      "name": "Update Task Status",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:add",
+        "app_toke": "ARYGbcsRoaNTxXsWkPZc6Fx5nJg",
+        "table_id": "tbl5e0LcWBGo4YeY",
+        "body": "={{ JSON.stringify({\n  fields: {\n    schedule_id: $json.schedule_id,\n\n    scheduled_date: Date.now(),\n\n    time_block: `${$json.start_time}-${$json.end_time}`,\n\n    task_name: $json.task_name,\n\n    start_datetime: new Date(\n      `${new Date().toISOString().slice(0,10)}T${$json.start_time}:00+08:00`\n    ).getTime(),\n\n    end_datetime: new Date(\n      `${new Date().toISOString().slice(0,10)}T${$json.end_time}:00+08:00`\n    ).getTime(),\n\n    note: \"AI Scheduled\"\n  }\n}) }}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        1952,
+        208
+      ],
+      "id": "88757b42-826b-4fcf-93b0-8e9e24afd2e6",
+      "name": "Add Schedule Record",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "run-scheduler",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        304,
+        144
+      ],
+      "id": "d7044367-cf0a-49d2-9905-bd6e848437cb",
+      "name": "Webhook",
+      "webhookId": "1dddbcb0-b41a-4633-84d9-29916675d8db"
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:search",
+        "app_toke": "ARYGbcsRoaNTxXsWkPZc6Fx5nJg",
+        "table_id": "tbl5e0LcWBGo4YeY",
+        "user_id_type": "user_id",
+        "body": "{\n  \"page_size\": 100,\n  \"field_names\": [\n    \"schedule_id\",\n    \"scheduled_date\",\n    \"time_block\",\n    \"task_name\",\n    \"start_datetime\",\n    \"end_datetime\",\n    \"note\"\n  ]\n}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        432,
+        496
+      ],
+      "id": "9168601a-6799-4fd4-a6d7-aaec7070d849",
+      "name": "Get Old Schedule Records",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "feishuOauth2Api",
+        "resource": "bitable",
+        "operation": "bitable:table:record:delete",
+        "app_toke": "ARYGbcsRoaNTxXsWkPZc6Fx5nJg",
+        "table_id": "tbl5e0LcWBGo4YeY",
+        "record_id": "={{$json.record_id}}"
+      },
+      "type": "n8n-nodes-feishu-lite.feishuNode",
+      "typeVersion": 1,
+      "position": [
+        752,
+        192
+      ],
+      "id": "272a63d8-03ec-479d-833c-f76c30d3eb88",
+      "name": "Delete Old Schedule Records",
+      "credentials": {
+        "feishuOauth2Api": {
+          "id": "fT0BWEtEaQ2eJQn5",
+          "name": "Feishu account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $json.data?.items || [];\n\nreturn rows\n  .filter(row => row.record_id && String(row.record_id).trim() !== \"\")\n  .map(row => ({\n    json: {\n      record_id: row.record_id,\n      fields: row.fields || {}\n    }\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        464
+      ],
+      "id": "41ef3410-60b7-4e74-bbfd-4c71467c6e89",
+      "name": "Flatten Records"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Tasks Records": {
+      "main": [
+        [
+          {
+            "node": "Filter Schedulable Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Schedulable Tasks": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Build Schedule Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Availability Rules": {
+      "main": [
+        [
+          {
+            "node": "Split Availability Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Expand Draft Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Schedule Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Availability Rules": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Expand Draft Schedule": {
+      "main": [
+        [
+          {
+            "node": "Add Schedule Record",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Tasks Records",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Old Schedule Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Old Schedule Records": {
+      "main": [
+        [
+          {
+            "node": "Flatten Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Records": {
+      "main": [
+        [
+          {
+            "node": "Delete Old Schedule Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Old Schedule Records": {
+      "main": [
+        [
+          {
+            "node": "Get Availability Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "06db8e8f-3498-4471-ae52-e3fd15e9da81",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1be3aca92a433d449d48944996962aede040b8fc675a7216b5db33880489604"
+  },
+  "id": "EuyBuBCf91ty0byG",
+  "tags": []
+}

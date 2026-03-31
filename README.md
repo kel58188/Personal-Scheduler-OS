@@ -1,2 +1,42 @@
-# Personal-Scheduler-OS
-AI digital human live system for e-commerce automation and real-time interaction
+# AI Task Automation System (Telegram + n8n)
+
+## 📌 项目简介
+本项目是一个基于 **Telegram + n8n + 大模型（LLM）** 构建的智能任务管理系统。
+
+用户只需在 Telegram 中发送一条自然语言消息，即可由 AI 自动解析任务内容，并完成任务记录、调度与状态管理，实现真正的“对话式任务管理”。
+
+本系统已部署在云服务器上，支持 **7×24小时不间断运行**，实现全天候自动化任务处理。
+
+---
+
+## 🚀 核心功能
+
+### 🧠 AI任务解析
+- 基于大模型（DeepSeek）解析用户输入
+- 自动提取任务名称、时间、优先级等信息
+- 支持自然语言输入（如：“明天写报告，优先级高”）
+
+### 📩 Telegram对话式输入
+- 用户通过 Telegram 发送消息触发系统
+- 无需打开额外系统，降低使用门槛
+- 实现“聊天即管理任务”
+
+### ⚙️ 自动化工作流（n8n）
+- 使用 n8n 构建完整Workflow：
+  - Telegram Trigger → AI解析 → 数据处理 → API调用
+- 支持Webhook触发与API集成
+- 模块化设计，易扩展
+
+### 🔄 智能任务调度
+- 自动记录任务到数据表（Bitable）
+- 支持任务状态更新（如 Need Reschedule）
+- 支持任务重排与动态调整
+
+---
+
+## 🏗️ 系统架构
+
+```text
+Telegram → n8n Webhook → AI解析（LLM）
+→ 数据处理 → 任务写入数据库（Bitable）
+→ 调度系统处理 → 返回结果
